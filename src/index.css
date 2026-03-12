@@ -1,0 +1,107 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&display=swap');
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --color-ayur-bg: #f5f5f0; /* Warm off-white */
+    --color-ayur-sidebar: #ecece6;
+    --color-ayur-accent: #5A5A40; /* Olive/Sage */
+    --color-ayur-text: #2c2c2a;
+    --color-ayur-surface: #ffffff;
+    --color-ayur-border: rgba(90, 90, 64, 0.1);
+    --color-ayur-border-strong: rgba(90, 90, 64, 0.2);
+    --color-ayur-hover: rgba(90, 90, 64, 0.05);
+  }
+
+  .dark {
+    --color-ayur-bg: #1a1a18;
+    --color-ayur-sidebar: #222220;
+    --color-ayur-accent: #8c8c6b; /* Lighter olive */
+    --color-ayur-text: #e8e8e3;
+    --color-ayur-surface: #2a2a28;
+    --color-ayur-border: rgba(232, 232, 227, 0.1);
+    --color-ayur-border-strong: rgba(232, 232, 227, 0.2);
+    --color-ayur-hover: rgba(232, 232, 227, 0.05);
+  }
+
+  body {
+    @apply bg-ayur-bg text-ayur-text font-sans antialiased transition-colors duration-300;
+  }
+}
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Cormorant Garamond", serif;
+  
+  --color-ayur-bg: var(--color-ayur-bg);
+  --color-ayur-sidebar: var(--color-ayur-sidebar);
+  --color-ayur-accent: var(--color-ayur-accent);
+  --color-ayur-text: var(--color-ayur-text);
+  --color-ayur-surface: var(--color-ayur-surface);
+  --color-ayur-border: var(--color-ayur-border);
+  --color-ayur-border-strong: var(--color-ayur-border-strong);
+  --color-ayur-hover: var(--color-ayur-hover);
+}
+
+.markdown-body {
+  @apply text-[13px] md:text-[15px] leading-relaxed space-y-4;
+}
+
+.markdown-body h1, .markdown-body h2, .markdown-body h3 {
+  @apply font-serif font-semibold mt-6 mb-3 text-ayur-accent;
+}
+
+.markdown-body h1 {
+  @apply text-2xl;
+}
+
+.markdown-body h2 {
+  @apply text-xl;
+}
+
+.markdown-body h3 {
+  @apply text-lg;
+}
+
+.markdown-body p {
+  @apply mb-4 text-ayur-text/90;
+}
+
+.markdown-body ul, .markdown-body ol {
+  @apply ml-6 mb-4 list-disc space-y-1;
+}
+
+.markdown-body li {
+  @apply mb-1;
+}
+
+.markdown-body code {
+  @apply bg-ayur-hover px-1.5 py-0.5 rounded-md font-mono text-[11px] md:text-[13px] text-ayur-accent;
+}
+
+.markdown-body pre {
+  @apply bg-ayur-surface border border-ayur-border rounded-xl p-4 overflow-x-auto my-4;
+}
+
+.markdown-body pre code {
+  @apply bg-transparent p-0 text-ayur-text;
+}
+
+.markdown-body blockquote {
+  @apply border-l-4 border-ayur-accent/40 pl-5 italic text-ayur-text/70 my-5 py-1;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-ayur-border-strong rounded-full;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-ayur-accent/50;
+}
