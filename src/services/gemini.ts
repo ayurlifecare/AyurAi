@@ -1,12 +1,23 @@
 import { GoogleGenAI } from "@google/genai";
+import OpenAI from "openai";
 import { db } from "../config/firebase";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 
 export class GeminiService {
   private ai: GoogleGenAI;
+  private openai: OpenAI | null = null;
 
   constructor() {
-    this.ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      console.error("GEMINI_API_KEY is missing. Please set it in your environment variables.");
+    }
+    this.ai = new GoogleGenAI({ apiKey: apiKey || "" });
+
+    const openAiKey = process.env.OPENAI_API_KEY;
+    if (openAiKey) {
+      this.openai = new OpenAI({ apiKey: openAiKey, dangerouslyAllowBrowser: true });
+    }
   }
 
   private async getCachedResponse(message: string): Promise<string | null> {
@@ -79,7 +90,6 @@ export class GeminiService {
       for (const word of words) {
         if (signal?.aborted) break;
         yield word + ' ';
-        await new Promise(resolve => setTimeout(resolve, 5));
       }
       return;
     }
@@ -106,35 +116,94 @@ export class GeminiService {
 
     const fullSystemInstruction = `${baseInstruction}\n\n${kbContext}\nMaintain a calm, wise, and compassionate tone.`;
 
-    const chat = this.ai.chats.create({
-      model: "gemini-3.1-pro-preview",
-      config: {
-        systemInstruction: fullSystemInstruction,
-      },
-      history: history.map(m => ({
-        role: m.role,
-        parts: [{ text: m.content }]
-      }))
-    });
+    const models = ["gemini-3-flash-preview", "gemini-3.1-pro-preview"];
+    let lastError = null;
 
-    const result = await chat.sendMessageStream({
-      message: message
-    });
+    for (const modelName of models) {
+      try {
+        const chat = this.ai.chats.create({
+          model: modelName,
+          config: {
+            systemInstruction: fullSystemInstruction,
+          },
+          history: history.map(m => ({
+            role: m.role,
+            parts: [{ text: m.content }]
+          }))
+        });
 
-    let fullResponse = '';
-    for await (const chunk of result) {
-      if (signal?.aborted) {
-        break;
+        const result = await chat.sendMessageStream({
+          message: message
+        });
+
+        let fullResponse = '';
+        for await (const chunk of result) {
+          if (signal?.aborted) {
+            break;
+          }
+          const text = chunk.text || '';
+          if (text) {
+            fullResponse += text;
+            yield text;
+          }
+        }
+        
+        // Set cache if not aborted
+        if (!signal?.aborted && fullResponse) {
+          await this.setCachedResponse(message, fullResponse);
+        }
+        
+        return; // Success, exit the loop
+      } catch (error) {
+        console.error(`Error with model ${modelName}:`, error);
+        lastError = error;
+        // Continue to next model if this one failed
       }
-      fullResponse += chunk.text;
-      yield chunk.text;
-      // Small delay for slow motion / line-by-line typing effect
-      await new Promise(resolve => setTimeout(resolve, 5));
     }
-    
-    // Set cache if not aborted
-    if (!signal?.aborted && fullResponse) {
-      await this.setCachedResponse(message, fullResponse);
+
+    // If we get here, all Gemini models failed
+    if (this.openai) {
+      try {
+        console.log("Falling back to OpenAI...");
+        const stream = await this.openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [
+            { role: "system", content: fullSystemInstruction },
+            ...history.map(m => ({ 
+              role: (m.role === "model" ? "assistant" : "user") as "assistant" | "user", 
+              content: m.content 
+            })),
+            { role: "user", content: message }
+          ],
+          stream: true,
+        });
+
+        let fullResponse = '';
+        for await (const chunk of stream) {
+          if (signal?.aborted) {
+            break;
+          }
+          const content = chunk.choices[0]?.delta?.content || "";
+          if (content) {
+            fullResponse += content;
+            yield content;
+          }
+        }
+        
+        // Set cache if not aborted
+        if (!signal?.aborted && fullResponse) {
+          await this.setCachedResponse(message, fullResponse);
+        }
+        
+        return; // Success, exit
+      } catch (openaiError) {
+        console.error("OpenAI fallback error:", openaiError);
+        lastError = openaiError;
+      }
+    }
+
+    if (lastError) {
+      throw lastError;
     }
   }
 }

@@ -29,9 +29,11 @@ import {
   LogOut,
   Coins,
   Crown,
-  PlayCircle
+  PlayCircle,
+  Download
 } from 'lucide-react';
 import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { gemini } from './services/gemini';
@@ -42,6 +44,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { AdComponent } from './components/Ads/AdComponent';
 import { InterstitialAd } from './components/Ads/InterstitialAd';
 import { SliderAd } from './components/Ads/SliderAd';
+import { InChatAd } from './components/Ads/InChatAd';
+import { CompactAd } from './components/Ads/CompactAd';
 import { PaymentModal } from './components/Modals/PaymentModal';
 import { BrandLogo } from './components/BrandLogo';
 
@@ -75,6 +79,48 @@ const sliderAds = [
   }
 ];
 
+const chatAds = [
+  {
+    title: "Organic Ashwagandha",
+    description: "Reduce stress and boost energy with our premium organic Ashwagandha capsules.",
+    image: "https://picsum.photos/seed/ashwagandha/400/400",
+    cta: "Shop Now",
+    link: "#"
+  },
+  {
+    title: "Ayurvedic Detox Tea",
+    description: "Cleanse your body naturally with our blend of 12 sacred Himalayan herbs.",
+    image: "https://picsum.photos/seed/tea/400/400",
+    cta: "Get 20% Off",
+    link: "#"
+  },
+  {
+    title: "Personalized Dosha Kit",
+    description: "Everything you need to balance your specific Vata, Pitta, or Kapha constitution.",
+    image: "https://picsum.photos/seed/kit/400/400",
+    cta: "Build My Kit",
+    link: "#"
+  }
+];
+
+const responseAds = [
+  {
+    title: "Triphala Digestive Support",
+    description: "Gentle daily detoxification and colon cleanse.",
+    link: "#"
+  },
+  {
+    title: "Brahmi Brain Booster",
+    description: "Enhance memory, focus, and cognitive function.",
+    link: "#"
+  },
+  {
+    title: "Neem Skin Purifier",
+    description: "Natural support for clear and healthy skin.",
+    link: "#"
+  }
+];
+
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
@@ -95,24 +141,56 @@ interface ChatSession {
 
 export default function App() {
   const { user, userProfile, loading, error: authError, storageMode, logout, updateCoins, upgradeToPro, resetDailyCoins } = useAuth();
+  const [showSplash, setShowSplash] = useState(true);
   const [unauthQuestionCount, setUnauthQuestionCount] = useState(0);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isIOS, setIsIOS] = useState(false);
+  const [showInstallPrompt, setShowInstallPrompt] = useState(false);
+  const [installPromptDismissed, setInstallPromptDismissed] = useState(
+    localStorage.getItem('installPromptDismissed') === 'true'
+  );
 
   useEffect(() => {
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
-    setIsIOS(isIOS && !isStandalone);
+    if (!loading) {
+      const timer = setTimeout(() => {
+        setShowSplash(false);
+      }, 800);
+      return () => clearTimeout(timer);
+    }
+  }, [loading]);
+
+  useEffect(() => {
+    const isIOSDevice = 
+      (/iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      
+    const isStandalone = 
+      window.matchMedia('(display-mode: standalone)').matches || 
+      (window.navigator as any).standalone === true;
+      
+    setIsIOS(isIOSDevice && !isStandalone);
 
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e as BeforeInstallPromptEvent);
       // Check if already installed
-      if (window.matchMedia('(display-mode: standalone)').matches) {
+      if (isStandalone) {
         return;
       }
+      
+      // Show custom prompt if not dismissed previously
+      if (localStorage.getItem('installPromptDismissed') !== 'true') {
+        setShowInstallPrompt(true);
+      }
     };
+
+    // For iOS, show the prompt manually since beforeinstallprompt doesn't fire
+    if (isIOSDevice && !isStandalone) {
+      if (localStorage.getItem('installPromptDismissed') !== 'true') {
+        setShowInstallPrompt(true);
+      }
+    }
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt as EventListener);
 
@@ -127,12 +205,26 @@ export default function App() {
       deferredPrompt.userChoice.then((choiceResult: { outcome: 'accepted' | 'dismissed' }) => {
         if (choiceResult.outcome === 'accepted') {
           console.log('User accepted the A2HS prompt');
+        } else {
+          console.log('User dismissed the A2HS prompt');
         }
+        setShowInstallPrompt(false);
+        setInstallPromptDismissed(true);
+        localStorage.setItem('installPromptDismissed', 'true');
         setDeferredPrompt(null);
       });
     } else if (isIOS) {
       alert('To install, tap the Share button and then "Add to Home Screen".');
+      setShowInstallPrompt(false);
+      setInstallPromptDismissed(true);
+      localStorage.setItem('installPromptDismissed', 'true');
     }
+  };
+
+  const dismissInstallPrompt = () => {
+    setShowInstallPrompt(false);
+    setInstallPromptDismissed(true);
+    localStorage.setItem('installPromptDismissed', 'true');
   };
 
   const [sessions, setSessions] = useState<ChatSession[]>([
@@ -314,6 +406,10 @@ export default function App() {
 
     setSessions(updatedSessions);
     setInput('');
+    const textarea = document.getElementById('chat-input');
+    if (textarea) {
+      textarea.style.height = 'auto';
+    }
     setIsLoading(true);
     
     abortControllerRef.current = new AbortController();
@@ -350,39 +446,46 @@ export default function App() {
 
       const stream = gemini.chatStream(currentInput, history, aiMode, abortControllerRef.current.signal);
       
+      let lastUpdateTime = Date.now();
       for await (const chunk of stream) {
         fullResponse += chunk;
-        setSessions(prev => prev.map(s => {
-          if (s.id === activeSessionId) {
-            const newMessages = [...s.messages];
-            const lastMsg = newMessages[newMessages.length - 1];
-            if (lastMsg && lastMsg.id === modelMessageId) {
-              lastMsg.content = fullResponse;
+        
+        // Update state at most every 50ms to prevent UI lag
+        if (Date.now() - lastUpdateTime > 50) {
+          setSessions(prev => prev.map(s => {
+            if (s.id === activeSessionId) {
+              const newMessages = [...s.messages];
+              const lastMsg = newMessages[newMessages.length - 1];
+              if (lastMsg && lastMsg.id === modelMessageId) {
+                lastMsg.content = fullResponse;
+              }
+              return { ...s, messages: newMessages };
             }
-            return { ...s, messages: newMessages };
-          }
-          return s;
-        }));
+            return s;
+          }));
+          lastUpdateTime = Date.now();
+        }
       }
+      
+      // Final update to ensure we have the complete response
+      setSessions(prev => prev.map(s => {
+        if (s.id === activeSessionId) {
+          const newMessages = [...s.messages];
+          const lastMsg = newMessages[newMessages.length - 1];
+          if (lastMsg && lastMsg.id === modelMessageId) {
+            lastMsg.content = fullResponse;
+          }
+          return { ...s, messages: newMessages };
+        }
+        return s;
+      }));
 
     } catch (error: any) {
       console.error('Chat error:', error);
       
-      let message = 'Failed to send message. Please try again.';
+      let message = error?.message || 'Failed to send message. Please try again.';
       
-      let errorData = error?.error || error;
-      
-      // If error is an Error object, try to parse its message
-      if (error instanceof Error) {
-        try {
-          const parsed = JSON.parse(error.message);
-          errorData = parsed.error || parsed;
-        } catch (e) {
-          // Not JSON, ignore
-        }
-      }
-      
-      if (errorData?.code === 429 || errorData?.status === 'RESOURCE_EXHAUSTED') {
+      if (message.includes('429') || message.includes('RESOURCE_EXHAUSTED')) {
         message = 'You have reached your daily limit. Please try again later.';
       }
       
@@ -459,24 +562,49 @@ export default function App() {
     "I have joint pain that gets worse in the cold."
   ];
 
-  if (loading) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-ayur-bg">
-        <motion.div 
-          animate={{ scale: [1, 1.1, 1], opacity: [0.5, 1, 0.5] }}
-          transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
-          className="w-16 h-16 rounded-full bg-ayur-accent/20 flex items-center justify-center"
-        >
-          <Leaf className="text-ayur-accent" size={32} />
-        </motion.div>
-      </div>
-    );
-  }
-
   // Removed forced login check
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-ayur-bg text-ayur-text font-sans">
+    <div className="flex h-full w-full overflow-hidden bg-ayur-bg text-ayur-text font-sans relative">
+      {/* Splash Screen & Loading Overlay */}
+      <AnimatePresence>
+        {(showSplash || loading) && (
+          <motion.div
+            key="splash"
+            initial={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.5 }}
+            className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-ayur-bg text-ayur-text font-sans"
+          >
+            <div className="flex-1 flex flex-col items-center justify-center">
+              <motion.div
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ duration: 0.5, delay: 0.2 }}
+                className="flex flex-col items-center gap-4"
+              >
+                <div className="w-24 h-24 md:w-32 md:h-32 rounded-[2rem] bg-ayur-accent/10 flex items-center justify-center">
+                  <Leaf className="text-ayur-accent w-12 h-12 md:w-16 md:h-16" />
+                </div>
+                <h1 className="font-serif font-bold text-5xl md:text-6xl tracking-tight text-ayur-accent">
+                  AyurAi
+                </h1>
+              </motion.div>
+            </div>
+            
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.8 }}
+              className="pb-12 safe-area-bottom flex flex-col items-center gap-2"
+            >
+              <span className="text-xs md:text-sm text-ayur-text/60 font-medium uppercase tracking-widest">Powered by</span>
+              <span className="font-serif font-bold text-xl md:text-2xl text-ayur-accent">AyurLifeCare</span>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Feedback Banner */}
       <AnimatePresence>
         {feedback && (
@@ -521,11 +649,11 @@ export default function App() {
         <div className="flex flex-col h-full p-4">
           {/* Branding */}
           <BrandLogo 
-            className="flex items-center gap-2 md:gap-3 mb-4 md:mb-6 px-1 md:px-2 mt-1 md:mt-2"
+            className="flex items-center gap-3 md:gap-4 mb-4 md:mb-6 px-1 md:px-2 mt-1 md:mt-2"
             icon={Leaf}
-            iconClassName="text-ayur-accent md:w-5 md:h-5"
-            iconContainerClassName="w-8 h-8 md:w-10 md:h-10 rounded-xl bg-ayur-accent/10 flex items-center justify-center"
-            textClassName="font-serif font-bold text-xl md:text-2xl tracking-tight text-ayur-accent"
+            iconClassName="text-ayur-accent md:w-6 md:h-6"
+            iconContainerClassName="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-ayur-accent/10 flex items-center justify-center"
+            textClassName="font-serif font-bold text-2xl md:text-3xl tracking-tight text-ayur-accent"
           />
 
           {/* Mode Switcher */}
@@ -717,47 +845,83 @@ export default function App() {
         </AnimatePresence>
 
         {/* Header */}
-        <header className="shrink-0 h-16 md:h-20 border-b border-ayur-border flex items-center justify-between px-4 md:px-8 bg-ayur-surface/80 backdrop-blur-xl z-10">
-          <div className="flex items-center gap-4">
+        <header className="shrink-0 h-14 md:h-20 border-b border-ayur-border flex items-center justify-between px-3 md:px-8 bg-ayur-surface/80 backdrop-blur-xl z-10">
+          <div className="flex items-center gap-2 md:gap-4">
             <button 
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="p-2 -ml-2 hover:bg-ayur-hover rounded-xl transition-colors md:hidden text-ayur-text"
+              className="p-2 -ml-1 hover:bg-ayur-hover rounded-xl transition-colors md:hidden text-ayur-text"
               title="Toggle Menu"
             >
               <Menu size={20} />
             </button>
-            <div className="w-10 h-10 rounded-xl bg-ayur-accent/10 flex items-center justify-center hidden sm:flex">
-              <Leaf className="text-ayur-accent" size={20} />
+            <div className="w-8 h-8 md:w-12 md:h-12 rounded-xl bg-ayur-accent/10 flex items-center justify-center">
+              <Leaf className="text-ayur-accent w-4 h-4 md:w-6 md:h-6" />
             </div>
-            <div>
-              <BrandLogo textClassName="font-serif font-bold text-xl md:text-2xl tracking-tight text-ayur-accent" />
-              <p className="text-[10px] md:text-[11px] text-ayur-text/50 font-bold uppercase tracking-widest">
-                {aiMode === 'education' ? 'Education Mode' : 'Clinical Mode'}
+            <div className="flex flex-col justify-center">
+              <BrandLogo textClassName="font-serif font-bold text-xl md:text-3xl tracking-tight text-ayur-accent leading-none" />
+              <p className="text-[9px] md:text-[11px] text-ayur-text/50 font-bold uppercase tracking-widest mt-0.5 md:mt-1">
+                {aiMode === 'education' ? 'Education' : 'Clinical'}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 md:gap-2">
             <button 
               onClick={() => setIsDarkMode(!isDarkMode)}
-              className="p-2.5 hover:bg-ayur-hover rounded-xl transition-colors text-ayur-text/60 hover:text-ayur-accent"
+              className="p-2 md:p-2.5 hover:bg-ayur-hover rounded-xl transition-colors text-ayur-text/60 hover:text-ayur-accent"
               title="Toggle Dark Mode"
             >
-              {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+              {isDarkMode ? <Sun size={18} className="md:w-5 md:h-5" /> : <Moon size={18} className="md:w-5 md:h-5" />}
             </button>
-            {(deferredPrompt || isIOS) && (
+            {(deferredPrompt || isIOS) && !installPromptDismissed && (
               <button 
                 onClick={handleInstall}
-                className="flex p-2.5 hover:bg-ayur-hover rounded-xl transition-colors text-ayur-text/60 hover:text-ayur-accent"
+                className="flex p-2 md:p-2.5 hover:bg-ayur-hover rounded-xl transition-colors text-ayur-text/60 hover:text-ayur-accent"
                 title="Install App"
               >
-                <div className="w-5 h-5 rounded-full bg-ayur-accent flex items-center justify-center text-white text-[10px] font-bold">A</div>
+                <Download size={18} className="md:w-5 md:h-5" />
               </button>
             )}
-            <button className="p-2.5 hover:bg-ayur-hover rounded-xl transition-colors text-ayur-text/60 hover:text-ayur-accent hidden md:flex" title="Information">
-              <Info size={20} />
+            <button className="p-2 md:p-2.5 hover:bg-ayur-hover rounded-xl transition-colors text-ayur-text/60 hover:text-ayur-accent hidden md:flex" title="Information">
+              <Info size={18} className="md:w-5 md:h-5" />
             </button>
           </div>
         </header>
+
+        {/* Custom Install Prompt Banner */}
+        <AnimatePresence>
+          {showInstallPrompt && (
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="shrink-0 bg-ayur-accent/10 border-b border-ayur-accent/20 px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 z-10"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-ayur-accent flex items-center justify-center shrink-0">
+                  <Leaf className="text-white" size={20} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-ayur-text">Install AyurAi</h3>
+                  <p className="text-xs text-ayur-text/70">Add to your home screen for a faster, app-like experience.</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  onClick={dismissInstallPrompt}
+                  className="flex-1 sm:flex-none px-4 py-2 text-xs font-medium text-ayur-text/70 hover:text-ayur-text hover:bg-ayur-hover rounded-lg transition-colors"
+                >
+                  Not Now
+                </button>
+                <button
+                  onClick={handleInstall}
+                  className="flex-1 sm:flex-none px-4 py-2 text-xs font-bold text-white bg-ayur-accent hover:bg-ayur-accent/90 rounded-lg transition-colors shadow-sm"
+                >
+                  Install
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Small Banner Ad above chat */}
         {!isPro && (
@@ -769,7 +933,7 @@ export default function App() {
         )}
 
         {/* Messages Container */}
-        <div className="flex-1 overflow-y-auto scroll-smooth pb-12 md:pb-20">
+        <div className="flex-1 overflow-y-auto scroll-smooth pb-4 md:pb-8 relative">
           <AnimatePresence mode="wait">
             {activeSession.messages.length === 0 ? (
               <motion.div 
@@ -834,22 +998,32 @@ export default function App() {
                         {message.role === 'user' ? <User size={14} className="md:w-5 md:h-5" /> : <Leaf size={14} className="md:w-5 md:h-5" />}
                       </div>
                       <div className={cn(
-                        "flex-1 max-w-[90%] md:max-w-[80%] rounded-[1rem] md:rounded-[2rem] p-3 md:p-6 shadow-sm",
+                        "flex-1 max-w-[90%] md:max-w-[80%] rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm",
                         message.role === 'user' 
                           ? "bg-ayur-surface border border-ayur-border-strong text-ayur-text rounded-tr-sm" 
                           : "bg-ayur-accent/5 border border-ayur-accent/10 rounded-tl-sm"
                       )}>
                         <div className="markdown-body text-xs md:text-sm">
                           {message.content === '' && message.role === 'model' ? (
-                            <div className="flex gap-1.5 items-center py-2">
-                              <div className="w-1.5 h-1.5 md:w-2 md:h-2 bg-ayur-accent/40 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                              <div className="w-1.5 h-1.5 md:w-2 md:h-2 bg-ayur-accent/40 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                              <div className="w-1.5 h-1.5 md:w-2 md:h-2 bg-ayur-accent/40 rounded-full animate-bounce"></div>
+                            <div className="flex items-center gap-3 py-1">
+                              <div className="flex gap-1.5 items-center">
+                                <div className="w-1.5 h-1.5 md:w-2 md:h-2 bg-ayur-accent/60 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                                <div className="w-1.5 h-1.5 md:w-2 md:h-2 bg-ayur-accent/60 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                                <div className="w-1.5 h-1.5 md:w-2 md:h-2 bg-ayur-accent/60 rounded-full animate-bounce"></div>
+                              </div>
+                              <span className="text-xs md:text-sm font-medium text-ayur-accent/70 animate-pulse">
+                                {activeSession.mode === 'clinical' ? 'Vaidya is analyzing...' : 'AyurAi is thinking...'}
+                              </span>
                             </div>
                           ) : (
-                            <Markdown>{message.content}</Markdown>
+                            <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>
                           )}
                         </div>
+                        
+                        {!isPro && message.role === 'model' && message.content && (index + 1) % 3 === 0 && (
+                          <CompactAd {...responseAds[Math.floor(index / 3) % responseAds.length]} />
+                        )}
+
                         {message.role === 'model' && message.content && (
                           <div className="mt-3 flex justify-end">
                             <button 
@@ -863,6 +1037,12 @@ export default function App() {
                         )}
                       </div>
                     </motion.div>
+                    {!isPro && message.role === 'model' && index > 0 && (index + 1) % 4 === 0 && (
+                      <InChatAd 
+                        {...chatAds[Math.floor(index / 4) % chatAds.length]} 
+                        onRemoveAds={() => setShowPaymentModal(true)}
+                      />
+                    )}
                   </React.Fragment>
                 ))}
                 <div ref={messagesEndRef} className="h-4 md:h-8" />
@@ -872,14 +1052,18 @@ export default function App() {
         </div>
 
         {/* Input Area */}
-        <div className="shrink-0 p-3 md:p-6 bg-ayur-surface border-t border-ayur-border z-10">
+        <div className="shrink-0 p-3 md:p-6 bg-ayur-surface/80 backdrop-blur-md border-t border-ayur-border z-10 safe-area-bottom">
           <div className="max-w-4xl mx-auto relative">
-            <div className="relative group shadow-lg shadow-ayur-border-strong/20 rounded-[2rem] bg-ayur-surface border border-ayur-border-strong focus-within:border-ayur-accent/40 focus-within:ring-4 focus-within:ring-ayur-accent/10 transition-all">
+            <div className="relative group shadow-sm rounded-2xl md:rounded-[2rem] bg-ayur-surface border border-ayur-border-strong focus-within:border-ayur-accent focus-within:ring-4 focus-within:ring-ayur-accent/10 transition-all">
               <textarea
                 id="chat-input"
                 rows={1}
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  e.target.style.height = 'auto';
+                  e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
@@ -887,8 +1071,8 @@ export default function App() {
                   }
                 }}
                 placeholder="Ask AyurAi anything..."
-                className="w-full p-3 md:p-5 pr-12 md:pr-16 rounded-[2rem] focus:outline-none resize-none bg-transparent text-sm md:text-base text-ayur-text placeholder:text-ayur-text/40"
-                style={{ minHeight: '50px', maxHeight: '150px' }}
+                className="w-full p-3 md:p-5 pr-12 md:pr-16 rounded-2xl md:rounded-[2rem] focus:outline-none resize-none bg-transparent text-sm md:text-base text-ayur-text placeholder:text-ayur-text/40"
+                style={{ minHeight: '44px', maxHeight: '120px' }}
               />
               {isLoading ? (
                 <button

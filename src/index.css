@@ -3,29 +3,48 @@
 
 @layer base {
   :root {
-    --color-ayur-bg: #f5f5f0; /* Warm off-white */
-    --color-ayur-sidebar: #ecece6;
-    --color-ayur-accent: #5A5A40; /* Olive/Sage */
-    --color-ayur-text: #2c2c2a;
+    --color-ayur-bg: #f8fafc; /* slate-50 */
+    --color-ayur-sidebar: #ffffff;
+    --color-ayur-accent: #059669; /* emerald-600 */
+    --color-ayur-text: #0f172a; /* slate-900 */
     --color-ayur-surface: #ffffff;
-    --color-ayur-border: rgba(90, 90, 64, 0.1);
-    --color-ayur-border-strong: rgba(90, 90, 64, 0.2);
-    --color-ayur-hover: rgba(90, 90, 64, 0.05);
+    --color-ayur-border: #e2e8f0; /* slate-200 */
+    --color-ayur-border-strong: #cbd5e1; /* slate-300 */
+    --color-ayur-hover: #f1f5f9; /* slate-100 */
   }
 
   .dark {
-    --color-ayur-bg: #1a1a18;
-    --color-ayur-sidebar: #222220;
-    --color-ayur-accent: #8c8c6b; /* Lighter olive */
-    --color-ayur-text: #e8e8e3;
-    --color-ayur-surface: #2a2a28;
-    --color-ayur-border: rgba(232, 232, 227, 0.1);
-    --color-ayur-border-strong: rgba(232, 232, 227, 0.2);
-    --color-ayur-hover: rgba(232, 232, 227, 0.05);
+    --color-ayur-bg: #0f172a; /* slate-900 */
+    --color-ayur-sidebar: #1e293b; /* slate-800 */
+    --color-ayur-accent: #10b981; /* emerald-500 */
+    --color-ayur-text: #f8fafc; /* slate-50 */
+    --color-ayur-surface: #1e293b; /* slate-800 */
+    --color-ayur-border: #334155; /* slate-700 */
+    --color-ayur-border-strong: #475569; /* slate-600 */
+    --color-ayur-hover: #334155; /* slate-700 */
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    height: 100dvh;
+    overflow: hidden;
+    overscroll-behavior-y: none;
+  }
+
+  #root {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
   }
 
   body {
     @apply bg-ayur-bg text-ayur-text font-sans antialiased transition-colors duration-300;
+  }
+
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
   }
 }
 
@@ -51,6 +70,10 @@
   @apply font-serif font-semibold mt-6 mb-3 text-ayur-accent;
 }
 
+.markdown-body h1:first-child, .markdown-body h2:first-child, .markdown-body h3:first-child {
+  @apply mt-0;
+}
+
 .markdown-body h1 {
   @apply text-2xl;
 }
@@ -67,8 +90,16 @@
   @apply mb-4 text-ayur-text/90;
 }
 
+.markdown-body p:last-child {
+  @apply mb-0;
+}
+
 .markdown-body ul, .markdown-body ol {
   @apply ml-6 mb-4 list-disc space-y-1;
+}
+
+.markdown-body ul:last-child, .markdown-body ol:last-child {
+  @apply mb-0;
 }
 
 .markdown-body li {
@@ -89,6 +120,30 @@
 
 .markdown-body blockquote {
   @apply border-l-4 border-ayur-accent/40 pl-5 italic text-ayur-text/70 my-5 py-1;
+}
+
+.markdown-body table {
+  @apply w-full text-left border-collapse my-4 text-[12px] md:text-[14px] overflow-hidden rounded-xl shadow-sm border border-ayur-border;
+}
+
+.markdown-body th {
+  @apply bg-ayur-hover font-semibold p-3 border-b border-ayur-border text-ayur-text;
+}
+
+.markdown-body td {
+  @apply p-3 border-b border-ayur-border text-ayur-text/90;
+}
+
+.markdown-body tr:last-child td {
+  @apply border-b-0;
+}
+
+.markdown-body tr:nth-child(even) {
+  @apply bg-ayur-surface/50;
+}
+
+.markdown-body strong {
+  @apply font-semibold text-ayur-text;
 }
 
 /* Custom Scrollbar */
