@@ -47,6 +47,7 @@ import { SliderAd } from './components/Ads/SliderAd';
 import { InChatAd } from './components/Ads/InChatAd';
 import { CompactAd } from './components/Ads/CompactAd';
 import { PaymentModal } from './components/Modals/PaymentModal';
+import { ProfileModal } from './components/Modals/ProfileModal';
 import { BrandLogo } from './components/BrandLogo';
 
 // Add PWA install prompt logic
@@ -130,7 +131,61 @@ interface Message {
   role: 'user' | 'model';
   content: string;
   timestamp: number;
+  isStreaming?: boolean;
 }
+
+const Typewriter = ({ text, isStreaming }: { text: string, isStreaming?: boolean }) => {
+  const [displayedText, setDisplayedText] = useState('');
+  const queueRef = useRef<string[]>([]);
+  const processedLengthRef = useRef(0);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const isAnimatingRef = useRef(false);
+
+  useEffect(() => {
+    if (!isStreaming) {
+      setDisplayedText(text);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      isAnimatingRef.current = false;
+      return;
+    }
+
+    // Only add new content to the queue
+    if (text.length > processedLengthRef.current) {
+      const newContent = text.slice(processedLengthRef.current);
+      // Split by words but preserve spaces
+      const newWords = newContent.split(/(\s+)/).filter(Boolean);
+      queueRef.current.push(...newWords);
+      processedLengthRef.current = text.length;
+    }
+
+    if (!isAnimatingRef.current && queueRef.current.length > 0) {
+      processQueue();
+    }
+  }, [text, isStreaming]);
+
+  const processQueue = () => {
+    if (queueRef.current.length === 0) {
+      isAnimatingRef.current = false;
+      return;
+    }
+
+    isAnimatingRef.current = true;
+    const nextPart = queueRef.current.shift();
+    setDisplayedText(prev => prev + (nextPart || ''));
+    
+    // Faster for spaces, slightly slower for words
+    const delay = nextPart?.trim() === '' ? 10 : 40;
+    timerRef.current = setTimeout(processQueue, delay);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  return <Markdown remarkPlugins={[remarkGfm]}>{displayedText}</Markdown>;
+};
 
 interface ChatSession {
   id: string;
@@ -140,13 +195,14 @@ interface ChatSession {
 }
 
 export default function App() {
-  const { user, userProfile, loading, error: authError, storageMode, logout, updateCoins, upgradeToPro, resetDailyCoins } = useAuth();
+  const { user, userProfile, loading, error: authError, storageMode, logout, updateCoins, upgradeToPro, resetDailyCoins, updateProfileData } = useAuth();
   const [showSplash, setShowSplash] = useState(true);
   const [unauthQuestionCount, setUnauthQuestionCount] = useState(0);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isIOS, setIsIOS] = useState(false);
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const [installPromptDismissed, setInstallPromptDismissed] = useState(
     localStorage.getItem('installPromptDismissed') === 'true'
   );
@@ -358,8 +414,20 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  const handleSend = async () => {
-    if (!input.trim() || isLoading) return;
+  const suggestionPrompts: Record<string, string> = {
+    "Question": "I have a question about Ayurveda.",
+    "Discussion": "I would like to start a discussion about an Ayurvedic topic.",
+    "Short Answer": "I need a short, concise answer about an Ayurvedic topic.",
+    "Topic": "I want to learn about a specific Ayurvedic topic.",
+    "Case Taking": "I would like to start a clinical case taking session. Please ask me the necessary questions to understand my health status.",
+    "Prakruti Analysis": "I would like to perform a Prakruti analysis to understand my body constitution.",
+    "Case Discussions": "I want to discuss a specific clinical case from an Ayurvedic perspective.",
+    "Analysis Line of Treatment": "I would like to understand the Ayurvedic line of treatment for a specific condition."
+  };
+
+  const handleSend = async (overrideInput?: string) => {
+    const currentInput = overrideInput ? (suggestionPrompts[overrideInput] || overrideInput) : input;
+    if (!currentInput.trim() || isLoading) return;
 
     // Check for unauthenticated users
     if (!user) {
@@ -388,7 +456,6 @@ export default function App() {
     }
 
     const isFirstMessage = activeSession.messages.length === 0;
-    const currentInput = input;
 
     // Deduct coin for free users
     if (user && !isPro) {
@@ -430,6 +497,8 @@ export default function App() {
       });
     }
 
+    const modelMessageId = (Date.now() + 1).toString();
+
     try {
       const history = activeSession.messages.map(m => ({
         role: m.role,
@@ -437,14 +506,13 @@ export default function App() {
       }));
 
       let fullResponse = '';
-      const modelMessageId = (Date.now() + 1).toString();
       
       // Add initial empty model message
       setSessions(prev => prev.map(s => {
         if (s.id === activeSessionId) {
           return { 
             ...s, 
-            messages: [...s.messages, { id: modelMessageId, role: 'model', content: '', timestamp: Date.now() }] 
+            messages: [...s.messages, { id: modelMessageId, role: 'model', content: '', timestamp: Date.now(), isStreaming: true }] 
           };
         }
         return s;
@@ -480,6 +548,7 @@ export default function App() {
           const lastMsg = newMessages[newMessages.length - 1];
           if (lastMsg && lastMsg.id === modelMessageId) {
             lastMsg.content = fullResponse;
+            lastMsg.isStreaming = false;
           }
           return { ...s, messages: newMessages };
         }
@@ -487,7 +556,25 @@ export default function App() {
       }));
 
     } catch (error: any) {
-      console.error('Chat error:', error);
+      if (error.name === 'AbortError') {
+        // Handle abort gracefully
+        setSessions(prev => prev.map(s => {
+          if (s.id === activeSessionId) {
+            const newMessages = [...s.messages];
+            const lastMsg = newMessages[newMessages.length - 1];
+            if (lastMsg && lastMsg.id === modelMessageId) {
+              lastMsg.isStreaming = false;
+              if (!lastMsg.content) {
+                // Remove empty message if aborted before any content
+                return { ...s, messages: newMessages.slice(0, -1) };
+              }
+            }
+            return { ...s, messages: newMessages };
+          }
+          return s;
+        }));
+        return;
+      }
       
       let message = error?.message || 'Failed to send message. Please try again.';
       
@@ -782,32 +869,60 @@ export default function App() {
               </div>
             )}
 
-            <div className="flex flex-col gap-2 w-full p-2.5 md:p-3 rounded-xl bg-ayur-surface border border-ayur-border-strong shadow-sm">
-              <div className="flex items-center gap-2 md:gap-3">
-                <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-ayur-accent/10 flex items-center justify-center text-ayur-accent shadow-inner shrink-0 overflow-hidden border border-ayur-accent/20">
-                  {user?.photoURL ? (
-                    <img src={user?.photoURL} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                  ) : (
-                    <User size={16} className="md:w-[18px] md:h-[18px]" />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="truncate font-semibold text-xs md:text-sm text-ayur-text">
-                    {userProfile?.name || user?.displayName || user?.email?.split('@')[0] || user?.phoneNumber || 'Guest'}
+            {!user ? (
+              <div className="flex flex-col gap-2 mb-4">
+                <button 
+                  onClick={() => setShowLoginModal(true)}
+                  className="w-full py-2.5 bg-ayur-accent text-white rounded-xl text-xs font-bold shadow-md hover:bg-ayur-accent/90 transition-all"
+                >
+                  Sign In
+                </button>
+                <button 
+                  onClick={() => setShowLoginModal(true)}
+                  className="w-full py-2.5 bg-ayur-surface border border-ayur-border text-ayur-text rounded-xl text-xs font-bold hover:bg-ayur-hover transition-all"
+                >
+                  Create Account
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2 w-full p-2.5 md:p-3 rounded-xl bg-ayur-surface border border-ayur-border-strong shadow-sm mb-4">
+                <div 
+                  className="flex items-center gap-2 md:gap-3 cursor-pointer group"
+                  onClick={() => setShowProfileModal(true)}
+                >
+                  <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-ayur-accent/10 flex items-center justify-center text-ayur-accent shadow-inner shrink-0 overflow-hidden border border-ayur-accent/20 group-hover:border-ayur-accent transition-colors">
+                    {user?.photoURL ? (
+                      <img src={user?.photoURL} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    ) : (
+                      <User size={16} className="md:w-[18px] md:h-[18px]" />
+                    )}
                   </div>
-                  <div className="truncate text-[10px] md:text-[11px] text-ayur-text/60 font-medium mt-0.5">
-                    {userProfile?.profession ? `${userProfile.profession}` : 'Member'}
+                  <div className="flex-1 min-w-0">
+                    <div className="truncate font-semibold text-xs md:text-sm text-ayur-text flex items-center gap-1.5">
+                      {userProfile?.name || user?.displayName || user?.email?.split('@')[0] || user?.phoneNumber || 'Guest'}
+                      {isPro && <Crown size={10} className="text-yellow-500" />}
+                    </div>
+                    <div className="truncate text-[10px] md:text-[11px] text-ayur-text/60 font-medium mt-0.5 flex items-center gap-1.5">
+                      <span className={cn(
+                        "px-1.5 py-0.5 rounded-md text-[8px] uppercase font-bold",
+                        isPro ? "bg-yellow-500/10 text-yellow-600" : "bg-ayur-accent/10 text-ayur-accent"
+                      )}>
+                        {isPro ? 'Pro' : 'Free'}
+                      </span>
+                      <span className="opacity-40">•</span>
+                      <span>{userProfile?.profession || 'Member'}</span>
+                    </div>
                   </div>
                 </div>
                 <button 
                   onClick={logout}
-                  className="p-1.5 md:p-2 text-ayur-text/40 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
-                  title="Sign Out"
+                  className="mt-2 w-full flex items-center justify-center gap-2 py-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors text-[10px] font-bold uppercase tracking-widest border border-transparent hover:border-red-500/20"
                 >
-                  <LogOut size={14} className="md:w-4 md:h-4" />
+                  <LogOut size={12} />
+                  Sign Out
                 </button>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </motion.aside>
@@ -984,7 +1099,7 @@ export default function App() {
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: i * 0.1 }}
-                        onClick={() => setInput(suggestion)}
+                        onClick={() => handleSend(suggestion)}
                         className="p-4 text-center rounded-2xl border border-ayur-border bg-ayur-surface hover:bg-ayur-sidebar hover:border-ayur-accent/30 hover:shadow-md transition-all text-sm font-bold text-ayur-text/80 group"
                       >
                         {suggestion}
@@ -1026,7 +1141,7 @@ export default function App() {
                           : "bg-ayur-accent/5 border border-ayur-accent/10 rounded-tl-sm"
                       )}>
                         <div className="markdown-body text-xs md:text-sm">
-                          {message.content === '' && message.role === 'model' ? (
+                          {message.content === '' && message.role === 'model' && isLoading ? (
                             <div className="flex items-center gap-3 py-1">
                               <div className="flex gap-1.5 items-center">
                                 <div className="w-1.5 h-1.5 md:w-2 md:h-2 bg-ayur-accent/60 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
@@ -1038,7 +1153,7 @@ export default function App() {
                               </span>
                             </div>
                           ) : (
-                            <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>
+                            <Typewriter text={message.content} isStreaming={message.isStreaming} />
                           )}
                         </div>
                         
@@ -1108,7 +1223,7 @@ export default function App() {
               ) : (
                 <button
                   id="send-btn"
-                  onClick={handleSend}
+                  onClick={() => handleSend()}
                   disabled={!input.trim()}
                   className={cn(
                     "absolute right-2 md:right-3 bottom-1.5 md:bottom-3 p-2 md:p-3 rounded-xl transition-all",
@@ -1156,9 +1271,22 @@ export default function App() {
         title={sessions.find(s => s.id === sessionToDelete)?.title}
       />
 
+      <ProfileModal 
+        isOpen={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+        userProfile={userProfile}
+        onSave={updateProfileData}
+      />
+
       {showLoginModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md">
+          <div className="w-full max-w-md relative">
+            <button 
+              onClick={() => setShowLoginModal(false)}
+              className="absolute top-4 right-4 z-[60] p-2 bg-ayur-surface/50 hover:bg-ayur-surface rounded-full transition-colors text-ayur-text/40"
+            >
+              <X size={20} />
+            </button>
             <Login />
           </div>
         </div>

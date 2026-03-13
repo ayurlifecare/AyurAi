@@ -250,9 +250,29 @@ export function useAuth() {
     }
   };
 
+  const updateProfileData = async (data: Partial<UserProfile>) => {
+    if (!user) return;
+    
+    // Optimistic update
+    const updatedProfile = { ...userProfile, ...data, updatedAt: new Date().toISOString() };
+    setUserProfile(updatedProfile as UserProfile);
+    localStorage.setItem(`ayurai_profile_${user.uid}`, JSON.stringify(updatedProfile));
+
+    if (db) {
+      try {
+        await setDoc(doc(db, 'users', user.uid), {
+          ...data,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+      } catch (error) {
+        console.error("Error updating profile in Firestore:", error);
+      }
+    }
+  };
+
   return { 
     user, userProfile, loading, error, storageMode,
     loginWithGoogle, loginWithEmail, registerWithEmail, logout,
-    updateCoins, upgradeToPro, resetDailyCoins
+    updateCoins, upgradeToPro, resetDailyCoins, updateProfileData
   };
 }

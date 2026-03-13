@@ -14,14 +14,14 @@
   }
 
   .dark {
-    --color-ayur-bg: #0f172a; /* slate-900 */
-    --color-ayur-sidebar: #1e293b; /* slate-800 */
+    --color-ayur-bg: #020617; /* slate-950 */
+    --color-ayur-sidebar: #0f172a; /* slate-900 */
     --color-ayur-accent: #10b981; /* emerald-500 */
-    --color-ayur-text: #f8fafc; /* slate-50 */
-    --color-ayur-surface: #1e293b; /* slate-800 */
-    --color-ayur-border: #334155; /* slate-700 */
-    --color-ayur-border-strong: #475569; /* slate-600 */
-    --color-ayur-hover: #334155; /* slate-700 */
+    --color-ayur-text: #f1f5f9; /* slate-100 */
+    --color-ayur-surface: #0f172a; /* slate-900 */
+    --color-ayur-border: #1e293b; /* slate-800 */
+    --color-ayur-border-strong: #334155; /* slate-700 */
+    --color-ayur-hover: #1e293b; /* slate-800 */
   }
 
   html, body {
