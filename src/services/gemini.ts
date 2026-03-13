@@ -58,16 +58,16 @@ export class GeminiService {
     }
   }
 
-  async generateTitle(firstMessage: string): Promise<string> {
+  async generateTitle(firstMessage: string, language: string = 'English'): Promise<string> {
     const isGreeting = /^(hi|hello|hey|namaste|greetings)[\s\p{P}]*$/iu.test(firstMessage.trim());
     if (isGreeting) {
-      return "Welcome to AyurAi";
+      return language === 'English' ? "Welcome to AyurAi" : "स्वागत है";
     }
 
     try {
       const response = await this.ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: `Generate a concise, 2-4 word title for an Ayurvedic consultation starting with this message: "${firstMessage}". Return ONLY the title, no quotes, no extra text.`,
+        contents: `Generate a concise, 2-4 word title in ${language} for an Ayurvedic consultation starting with this message: "${firstMessage}". Return ONLY the title, no quotes, no extra text.`,
       });
       return response.text?.trim() || firstMessage.slice(0, 30) + "...";
     } catch (error) {
@@ -80,11 +80,14 @@ export class GeminiService {
     message: string, 
     history: { role: "user" | "model"; content: string }[], 
     mode: 'education' | 'clinical' = 'clinical',
+    language: string = 'English',
     signal?: AbortSignal
   ) {
     const isGreeting = /^(hi|hello|hey|namaste|greetings)[\s\p{P}]*$/iu.test(message.trim());
     if (history.length === 0 && isGreeting) {
-      const greetingResponse = `Namaste. Welcome To AyurAi By AyurLifeCare. 🙏\n\nHere are a few key features of our platform:\n\n*   **Personalized Ayurvedic Consultations:** Get tailored advice based on your unique mind-body constitution (Dosha).\n*   **Symptom Analysis:** Understand the root cause of your imbalances from an Ayurvedic perspective.\n*   **Diet & Lifestyle Recommendations:** Discover the right foods, herbs, and daily routines for optimal health.\n*   **Educational Mode:** Learn about ancient Ayurvedic philosophy, history, and principles.\n*   **Secure & Private:** Your health data is kept confidential and secure.\n\nHow can I assist you on your wellness journey today?`;
+      const greetingResponse = language === 'English' 
+        ? `Namaste. Welcome To AyurAi By AyurLifeCare. 🙏\n\nHere are a few key features of our platform:\n\n*   **Personalized Ayurvedic Consultations:** Get tailored advice based on your unique mind-body constitution (Dosha).\n*   **Symptom Analysis:** Understand the root cause of your imbalances from an Ayurvedic perspective.\n*   **Diet & Lifestyle Recommendations:** Discover the right foods, herbs, and daily routines for optimal health.\n*   **Educational Mode:** Learn about ancient Ayurvedic philosophy, history, and principles.\n*   **Secure & Private:** Your health data is kept confidential and secure.\n\nHow can I assist you on your wellness journey today?`
+        : `नमस्ते। AyurLifeCare द्वारा AyurAi में आपका स्वागत है। 🙏\n\nयहाँ हमारे प्लेटफॉर्म की कुछ प्रमुख विशेषताएं दी गई हैं:\n\n*   **व्यक्तिगत आयुर्वेदिक परामर्श:** अपनी अनूठी मन-शरीर प्रकृति (दोष) के आधार पर अनुकूलित सलाह प्राप्त करें।\n*   **लक्षण विश्लेषण:** आयुर्वेदिक दृष्टिकोण से अपने असंतुलन के मूल कारण को समझें।\n*   **आहार और जीवनशैली सिफारिशें:** इष्टतम स्वास्थ्य के लिए सही खाद्य पदार्थ, जड़ी-बूटियाँ और दैनिक दिनचर्या खोजें।\n*   **शैक्षिक मोड:** प्राचीन आयुर्वेदिक दर्शन, इतिहास और सिद्धांतों के बारे में जानें।\n*   **सुरक्षित और निजी:** आपका स्वास्थ्य डेटा गोपनीय और सुरक्षित रखा जाता है।\n\nआज मैं आपकी कल्याण यात्रा में आपकी कैसे सहायता कर सकता हूँ?`;
       
       const words = greetingResponse.split(' ');
       for (const word of words) {
@@ -94,8 +97,9 @@ export class GeminiService {
       return;
     }
 
-    // Check cache
-    const cachedAnswer = await this.getCachedResponse(message);
+    // Check cache with language key
+    const cacheKey = `${language}:${message}`;
+    const cachedAnswer = await this.getCachedResponse(cacheKey);
     if (cachedAnswer) {
       yield cachedAnswer;
       return;
@@ -114,7 +118,11 @@ export class GeminiService {
          4. Finally, provide personalized Diet, Lifestyle, and Herbal recommendations.
          5. Always emphasize that this is informational and they should consult a real-world professional for serious conditions.`;
 
-    const fullSystemInstruction = `${baseInstruction}\n\n${kbContext}\nMaintain a calm, wise, and compassionate tone.`;
+    const languageInstruction = `CRITICAL: You MUST provide the entire response in ${language}. 
+       However, if you include any Ayurvedic Shlokas or verses, they MUST be in their original Sanskrit (written in Devanagari script if applicable), followed by the translation in ${language}. 
+       All other explanations, questions, and advice MUST be in ${language}.`;
+
+    const fullSystemInstruction = `${baseInstruction}\n\n${languageInstruction}\n\n${kbContext}\nMaintain a calm, wise, and compassionate tone.`;
 
     const models = ["gemini-3-flash-preview", "gemini-3.1-pro-preview"];
     let lastError = null;

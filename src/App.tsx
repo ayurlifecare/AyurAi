@@ -30,7 +30,8 @@ import {
   Coins,
   Crown,
   PlayCircle,
-  Download
+  Download,
+  Languages
 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -102,6 +103,16 @@ const chatAds = [
     cta: "Build My Kit",
     link: "#"
   }
+];
+
+const languages = [
+  { code: 'en', name: 'English' },
+  { code: 'hi', name: 'Hindi' },
+  { code: 'sa', name: 'Sanskrit' },
+  { code: 'ta', name: 'Tamil' },
+  { code: 'te', name: 'Telugu' },
+  { code: 'kn', name: 'Kannada' },
+  { code: 'mr', name: 'Marathi' }
 ];
 
 const responseAds = [
@@ -203,6 +214,8 @@ export default function App() {
   const [isIOS, setIsIOS] = useState(false);
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [selectedLanguage, setSelectedLanguage] = useState(languages[0]);
+  const [showLanguageMenu, setShowLanguageMenu] = useState(false);
   const [installPromptDismissed, setInstallPromptDismissed] = useState(
     localStorage.getItem('installPromptDismissed') === 'true'
   );
@@ -492,7 +505,7 @@ export default function App() {
       const tempTitle = currentInput.slice(0, 30) + (currentInput.length > 30 ? '...' : '');
       setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, title: tempTitle } : s));
       
-      gemini.generateTitle(currentInput).then(aiTitle => {
+      gemini.generateTitle(currentInput, selectedLanguage.name).then(aiTitle => {
         setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, title: aiTitle } : s));
       });
     }
@@ -518,7 +531,7 @@ export default function App() {
         return s;
       }));
 
-      const stream = gemini.chatStream(currentInput, history, aiMode, abortControllerRef.current.signal);
+      const stream = gemini.chatStream(currentInput, history, aiMode, selectedLanguage.name, abortControllerRef.current.signal);
       
       let lastUpdateTime = Date.now();
       for await (const chunk of stream) {
@@ -1002,6 +1015,53 @@ export default function App() {
                 <Download size={18} className="md:w-5 md:h-5" />
               </button>
             )}
+            
+            {/* Language Selector */}
+            <div className="relative">
+              <button 
+                onClick={() => setShowLanguageMenu(!showLanguageMenu)}
+                className="flex items-center gap-1.5 p-2 md:p-2.5 hover:bg-ayur-hover rounded-xl transition-colors text-ayur-text/60 hover:text-ayur-accent"
+                title="Select Language"
+              >
+                <Languages size={18} className="md:w-5 md:h-5" />
+                <span className="text-[10px] md:text-xs font-bold uppercase tracking-wider hidden sm:inline">{selectedLanguage.name}</span>
+              </button>
+              
+              <AnimatePresence>
+                {showLanguageMenu && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setShowLanguageMenu(false)} />
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                      className="absolute right-0 mt-2 w-40 bg-ayur-surface border border-ayur-border shadow-xl rounded-2xl overflow-hidden z-40"
+                    >
+                      <div className="p-2 max-h-60 overflow-y-auto custom-scrollbar">
+                        {languages.map((lang) => (
+                          <button
+                            key={lang.code}
+                            onClick={() => {
+                              setSelectedLanguage(lang);
+                              setShowLanguageMenu(false);
+                            }}
+                            className={cn(
+                              "w-full text-left px-4 py-2.5 rounded-xl text-xs font-medium transition-colors",
+                              selectedLanguage.code === lang.code 
+                                ? "bg-ayur-accent text-white" 
+                                : "text-ayur-text/70 hover:bg-ayur-hover hover:text-ayur-accent"
+                            )}
+                          >
+                            {lang.name}
+                          </button>
+                        ))}
+                      </div>
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
+            </div>
+
             <button className="p-2 md:p-2.5 hover:bg-ayur-hover rounded-xl transition-colors text-ayur-text/60 hover:text-ayur-accent hidden md:flex" title="Information">
               <Info size={18} className="md:w-5 md:h-5" />
             </button>
