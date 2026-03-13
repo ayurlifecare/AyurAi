@@ -80,7 +80,7 @@ export function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-ayur-bg p-4 text-ayur-text relative overflow-hidden">
+    <div className="flex items-center justify-center bg-ayur-bg p-4 text-ayur-text relative overflow-hidden rounded-[2rem]">
       {/* Background decorative elements */}
       <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-ayur-accent/5 blur-[100px] pointer-events-none" />
       <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-ayur-accent/5 blur-[100px] pointer-events-none" />
@@ -89,32 +89,32 @@ export function Login() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-        className="w-full max-w-md bg-ayur-surface/80 backdrop-blur-xl rounded-[2rem] shadow-xl overflow-hidden p-8 border border-ayur-border relative z-10"
+        className="w-full max-w-md bg-ayur-surface/80 backdrop-blur-xl rounded-[2rem] shadow-xl overflow-hidden p-6 md:p-8 border border-ayur-border relative z-10 max-h-[90vh] overflow-y-auto"
       >
-        <div className="flex justify-center mb-6">
+        <div className="flex justify-center mb-4 md:mb-6">
           <motion.div 
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ delay: 0.2, duration: 0.5 }}
-            className="w-16 h-16 rounded-2xl bg-ayur-accent/10 flex items-center justify-center rotate-3"
+            className="w-14 h-14 md:w-16 md:h-16 rounded-2xl bg-ayur-accent/10 flex items-center justify-center rotate-3"
           >
-            <Leaf className="text-ayur-accent -rotate-3" size={32} />
+            <Leaf className="text-ayur-accent -rotate-3" size={28} />
           </motion.div>
         </div>
         
-        <motion.h2 
+        <motion.div 
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="text-4xl font-serif font-semibold text-center mb-2 text-ayur-accent"
+          className="text-center mb-2"
         >
-          <BrandLogo textClassName="text-4xl font-serif font-semibold text-center text-ayur-accent" />
-        </motion.h2>
+          <BrandLogo textClassName="text-3xl md:text-4xl font-serif font-semibold text-center text-ayur-accent" />
+        </motion.div>
         <motion.p 
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.4 }}
-          className="text-center text-ayur-text/60 mb-8 font-medium"
+          className="text-center text-ayur-text/60 mb-6 md:mb-8 font-medium text-sm md:text-base"
         >
           {isRegistering ? 'Create your account' : (emailMode === 'otp' ? 'Sign in with OTP' : 'Sign in with password')}
         </motion.p>

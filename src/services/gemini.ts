@@ -1,10 +1,38 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
+import { db } from "../config/firebase";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 
 export class GeminiService {
   private ai: GoogleGenAI;
 
   constructor() {
     this.ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+  }
+
+  private async getCachedResponse(message: string): Promise<string | null> {
+    if (!db) return null;
+    try {
+      const normalizedMessage = message.trim().toLowerCase();
+      const cacheDocRef = doc(db, 'cached_responses', normalizedMessage);
+      const cacheDoc = await getDoc(cacheDocRef);
+      if (cacheDoc.exists()) {
+        return cacheDoc.data().answer;
+      }
+    } catch (error) {
+      console.error("Error checking cache:", error);
+    }
+    return null;
+  }
+
+  private async setCachedResponse(message: string, answer: string): Promise<void> {
+    if (!db) return;
+    try {
+      const normalizedMessage = message.trim().toLowerCase();
+      const cacheDocRef = doc(db, 'cached_responses', normalizedMessage);
+      await setDoc(cacheDocRef, { question: normalizedMessage, answer });
+    } catch (error) {
+      console.error("Error setting cache:", error);
+    }
   }
 
   private async getKnowledgeBaseContext(query: string): Promise<string> {
@@ -51,8 +79,15 @@ export class GeminiService {
       for (const word of words) {
         if (signal?.aborted) break;
         yield word + ' ';
-        await new Promise(resolve => setTimeout(resolve, 30));
+        await new Promise(resolve => setTimeout(resolve, 5));
       }
+      return;
+    }
+
+    // Check cache
+    const cachedAnswer = await this.getCachedResponse(message);
+    if (cachedAnswer) {
+      yield cachedAnswer;
       return;
     }
 
@@ -86,13 +121,20 @@ export class GeminiService {
       message: message
     });
 
+    let fullResponse = '';
     for await (const chunk of result) {
       if (signal?.aborted) {
         break;
       }
+      fullResponse += chunk.text;
       yield chunk.text;
       // Small delay for slow motion / line-by-line typing effect
-      await new Promise(resolve => setTimeout(resolve, 40));
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    
+    // Set cache if not aborted
+    if (!signal?.aborted && fullResponse) {
+      await this.setCachedResponse(message, fullResponse);
     }
   }
 }

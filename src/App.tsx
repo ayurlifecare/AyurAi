@@ -45,6 +45,12 @@ import { SliderAd } from './components/Ads/SliderAd';
 import { PaymentModal } from './components/Modals/PaymentModal';
 import { BrandLogo } from './components/BrandLogo';
 
+// Add PWA install prompt logic
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => void;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
+
 const sliderAds = [
   {
     id: '1',
@@ -89,12 +95,73 @@ interface ChatSession {
 
 export default function App() {
   const { user, userProfile, loading, error: authError, storageMode, logout, updateCoins, upgradeToPro, resetDailyCoins } = useAuth();
+  const [unauthQuestionCount, setUnauthQuestionCount] = useState(0);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [isIOS, setIsIOS] = useState(false);
+
+  useEffect(() => {
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+    setIsIOS(isIOS && !isStandalone);
+
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e as BeforeInstallPromptEvent);
+      // Check if already installed
+      if (window.matchMedia('(display-mode: standalone)').matches) {
+        return;
+      }
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt as EventListener);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt as EventListener);
+    };
+  }, []);
+
+  const handleInstall = () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.then((choiceResult: { outcome: 'accepted' | 'dismissed' }) => {
+        if (choiceResult.outcome === 'accepted') {
+          console.log('User accepted the A2HS prompt');
+        }
+        setDeferredPrompt(null);
+      });
+    } else if (isIOS) {
+      alert('To install, tap the Share button and then "Add to Home Screen".');
+    }
+  };
+
   const [sessions, setSessions] = useState<ChatSession[]>([
     { id: '1', title: 'New Chat', messages: [], mode: 'education' }
   ]);
+
+  // Load sessions on mount
+  useEffect(() => {
+    const key = user ? `ayurai_sessions_${user.uid}` : 'ayurai_sessions_guest';
+    const savedSessions = localStorage.getItem(key);
+    if (savedSessions) {
+      try {
+        setSessions(JSON.parse(savedSessions));
+      } catch (e) {
+        console.error("Failed to parse sessions", e);
+      }
+    }
+  }, [user]);
+
+  // Save sessions on change
+  useEffect(() => {
+    const key = user ? `ayurai_sessions_${user.uid}` : 'ayurai_sessions_guest';
+    localStorage.setItem(key, JSON.stringify(sessions));
+  }, [sessions, user]);
+
   const [activeSessionId, setActiveSessionId] = useState<string>('1');
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [feedback, setFeedback] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Default closed on mobile
   const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
   const [aiMode, setAiMode] = useState<'education' | 'clinical'>('education');
@@ -110,6 +177,14 @@ export default function App() {
 
   const isPro = userProfile?.subscription === 'pro';
   const coins = userProfile?.coins ?? 20;
+
+  // Reset unauth state when user logs in
+  useEffect(() => {
+    if (user) {
+      setUnauthQuestionCount(0);
+      setShowLoginModal(false);
+    }
+  }, [user]);
 
   // Handle Payment Redirects
   useEffect(() => {
@@ -132,7 +207,7 @@ export default function App() {
   useEffect(() => {
     if (user && userProfile) {
       const today = new Date().toISOString().split('T')[0];
-      if (userProfile.lastCoinReset !== today) {
+      if (userProfile?.lastCoinReset !== today) {
         resetDailyCoins();
       }
     }
@@ -155,7 +230,7 @@ export default function App() {
   };
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
   };
 
   useEffect(() => {
@@ -188,28 +263,37 @@ export default function App() {
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
 
-    // Coin check for free users
-    if (!isPro && coins <= 0) {
-      setInterstitialType('reward');
-      setInterstitialDuration(30);
-      setShowInterstitial(true);
-      return;
-    }
+    // Check for unauthenticated users
+    if (!user) {
+      if (unauthQuestionCount >= 2) {
+        setShowLoginModal(true);
+        return;
+      }
+      setUnauthQuestionCount(prev => prev + 1);
+    } else {
+      // Coin check for free users
+      if (!isPro && coins <= 0) {
+        setInterstitialType('reward');
+        setInterstitialDuration(30);
+        setShowInterstitial(true);
+        return;
+      }
 
-    // Interstitial ad check for free users (every 5 questions)
-    if (!isPro && questionCount > 0 && questionCount % 5 === 0) {
-      setInterstitialType('interstitial');
-      setInterstitialDuration(15);
-      setShowInterstitial(true);
-      setQuestionCount(prev => prev + 1); // Increment so we don't loop on the same question
-      return;
+      // Interstitial ad check for free users (every 5 questions)
+      if (!isPro && questionCount > 0 && questionCount % 5 === 0) {
+        setInterstitialType('interstitial');
+        setInterstitialDuration(15);
+        setShowInterstitial(true);
+        setQuestionCount(prev => prev + 1); // Increment so we don't loop on the same question
+        return;
+      }
     }
 
     const isFirstMessage = activeSession.messages.length === 0;
     const currentInput = input;
 
     // Deduct coin for free users
-    if (!isPro) {
+    if (user && !isPro) {
       updateCoins(coins - 1);
       setQuestionCount(prev => prev + 1);
     }
@@ -281,8 +365,28 @@ export default function App() {
         }));
       }
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Chat error:', error);
+      
+      let message = 'Failed to send message. Please try again.';
+      
+      let errorData = error?.error || error;
+      
+      // If error is an Error object, try to parse its message
+      if (error instanceof Error) {
+        try {
+          const parsed = JSON.parse(error.message);
+          errorData = parsed.error || parsed;
+        } catch (e) {
+          // Not JSON, ignore
+        }
+      }
+      
+      if (errorData?.code === 429 || errorData?.status === 'RESOURCE_EXHAUSTED') {
+        message = 'You have reached your daily limit. Please try again later.';
+      }
+      
+      setFeedback({ message, type: 'error' });
       setSessions(prev => prev.map(s => {
         if (s.id === activeSessionId) {
           return { 
@@ -290,7 +394,7 @@ export default function App() {
             messages: [...s.messages, { 
               id: Date.now().toString(), 
               role: 'model', 
-              content: 'I apologize, but I encountered an error. Please try again.', 
+              content: message, 
               timestamp: Date.now() 
             }] 
           };
@@ -369,12 +473,28 @@ export default function App() {
     );
   }
 
-  if (!user) {
-    return <Login />;
-  }
+  // Removed forced login check
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-ayur-bg text-ayur-text font-sans">
+      {/* Feedback Banner */}
+      <AnimatePresence>
+        {feedback && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className={cn(
+              "fixed top-4 left-4 right-4 z-50 p-4 rounded-xl shadow-lg text-sm font-medium flex items-center justify-between",
+              feedback.type === 'success' ? "bg-green-500 text-white" : "bg-red-500 text-white"
+            )}
+          >
+            {feedback.message}
+            <button onClick={() => setFeedback(null)}><X size={16} /></button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Mobile Overlay */}
       <AnimatePresence>
         {isSidebarOpen && (
@@ -531,15 +651,15 @@ export default function App() {
             <div className="flex flex-col gap-2 w-full p-2.5 md:p-3 rounded-xl bg-ayur-surface border border-ayur-border-strong shadow-sm">
               <div className="flex items-center gap-2 md:gap-3">
                 <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-ayur-accent/10 flex items-center justify-center text-ayur-accent shadow-inner shrink-0 overflow-hidden border border-ayur-accent/20">
-                  {user.photoURL ? (
-                    <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  {user?.photoURL ? (
+                    <img src={user?.photoURL} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                   ) : (
                     <User size={16} className="md:w-[18px] md:h-[18px]" />
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="truncate font-semibold text-xs md:text-sm text-ayur-text">
-                    {userProfile?.name || user.displayName || user.email?.split('@')[0] || user.phoneNumber || 'User'}
+                    {userProfile?.name || user?.displayName || user?.email?.split('@')[0] || user?.phoneNumber || 'Guest'}
                   </div>
                   <div className="truncate text-[10px] md:text-[11px] text-ayur-text/60 font-medium mt-0.5">
                     {userProfile?.profession ? `${userProfile.profession}` : 'Member'}
@@ -624,6 +744,15 @@ export default function App() {
             >
               {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
             </button>
+            {(deferredPrompt || isIOS) && (
+              <button 
+                onClick={handleInstall}
+                className="flex p-2.5 hover:bg-ayur-hover rounded-xl transition-colors text-ayur-text/60 hover:text-ayur-accent"
+                title="Install App"
+              >
+                <div className="w-5 h-5 rounded-full bg-ayur-accent flex items-center justify-center text-white text-[10px] font-bold">A</div>
+              </button>
+            )}
             <button className="p-2.5 hover:bg-ayur-hover rounded-xl transition-colors text-ayur-text/60 hover:text-ayur-accent hidden md:flex" title="Information">
               <Info size={20} />
             </button>
@@ -686,7 +815,7 @@ export default function App() {
                 )}
               </motion.div>
             ) : (
-              <div className="max-w-4xl mx-auto py-8 px-4 md:px-6 space-y-8">
+              <div className="max-w-4xl mx-auto py-4 px-3 md:px-6 space-y-6">
                 {activeSession.messages.map((message, index) => (
                   <React.Fragment key={message.id}>
                     <motion.div 
@@ -694,65 +823,48 @@ export default function App() {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.3 }}
                       className={cn(
-                        "flex gap-4 md:gap-6",
+                        "flex gap-3 md:gap-6",
                         message.role === 'user' ? "flex-row-reverse" : "flex-row"
                       )}
                     >
                       <div className={cn(
-                        "w-8 h-8 md:w-10 md:h-10 rounded-full shrink-0 flex items-center justify-center text-white shadow-md mt-1",
+                        "w-7 h-7 md:w-10 md:h-10 rounded-full shrink-0 flex items-center justify-center text-white shadow-md mt-1",
                         message.role === 'user' ? "bg-ayur-text" : "bg-ayur-accent"
                       )}>
-                        {message.role === 'user' ? <User size={16} className="md:w-5 md:h-5" /> : <Leaf size={16} className="md:w-5 md:h-5" />}
+                        {message.role === 'user' ? <User size={14} className="md:w-5 md:h-5" /> : <Leaf size={14} className="md:w-5 md:h-5" />}
                       </div>
                       <div className={cn(
-                        "flex-1 max-w-[88%] md:max-w-[80%] rounded-[1.5rem] md:rounded-[2rem] p-4 md:p-6 shadow-sm",
+                        "flex-1 max-w-[90%] md:max-w-[80%] rounded-[1rem] md:rounded-[2rem] p-3 md:p-6 shadow-sm",
                         message.role === 'user' 
                           ? "bg-ayur-surface border border-ayur-border-strong text-ayur-text rounded-tr-sm" 
                           : "bg-ayur-accent/5 border border-ayur-accent/10 rounded-tl-sm"
                       )}>
-                        <div className="markdown-body">
-                          <Markdown>{message.content}</Markdown>
+                        <div className="markdown-body text-xs md:text-sm">
+                          {message.content === '' && message.role === 'model' ? (
+                            <div className="flex gap-1.5 items-center py-2">
+                              <div className="w-1.5 h-1.5 md:w-2 md:h-2 bg-ayur-accent/40 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                              <div className="w-1.5 h-1.5 md:w-2 md:h-2 bg-ayur-accent/40 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                              <div className="w-1.5 h-1.5 md:w-2 md:h-2 bg-ayur-accent/40 rounded-full animate-bounce"></div>
+                            </div>
+                          ) : (
+                            <Markdown>{message.content}</Markdown>
+                          )}
                         </div>
                         {message.role === 'model' && message.content && (
-                          <div className="mt-4 flex justify-end">
+                          <div className="mt-3 flex justify-end">
                             <button 
                               onClick={() => copyToClipboard(message.id, message.content)} 
-                              className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-ayur-text/40 hover:text-ayur-accent transition-colors p-2 rounded-lg hover:bg-ayur-accent/10"
+                              className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-ayur-text/40 hover:text-ayur-accent transition-colors p-1.5 rounded-lg hover:bg-ayur-accent/10"
                             >
-                              {copiedId === message.id ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+                              {copiedId === message.id ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
                               {copiedId === message.id ? <span className="text-green-500">Copied</span> : "Copy"}
                             </button>
                           </div>
                         )}
                       </div>
                     </motion.div>
-
-                    {/* Ad in Chat Flow (Every 2 messages for free users) */}
-                    {!isPro && index > 0 && index % 2 === 0 && (
-                      <div className="max-w-2xl mx-auto py-4">
-                        <AdComponent slot="chat-ad" format="fluid" />
-                      </div>
-                    )}
                   </React.Fragment>
                 ))}
-                {isLoading && (
-                  <motion.div 
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="flex gap-4 md:gap-6"
-                  >
-                    <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-ayur-accent shrink-0 flex items-center justify-center text-white shadow-md mt-1">
-                      <Leaf size={16} className="md:w-5 md:h-5" />
-                    </div>
-                    <div className="flex-1 pt-3 md:pt-4">
-                      <div className="flex gap-2">
-                        <div className="w-2 h-2 md:w-2.5 md:h-2.5 bg-ayur-accent/40 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                        <div className="w-2 h-2 md:w-2.5 md:h-2.5 bg-ayur-accent/40 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                        <div className="w-2 h-2 md:w-2.5 md:h-2.5 bg-ayur-accent/40 rounded-full animate-bounce"></div>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
                 <div ref={messagesEndRef} className="h-4 md:h-8" />
               </div>
             )}
@@ -760,7 +872,7 @@ export default function App() {
         </div>
 
         {/* Input Area */}
-        <div className="shrink-0 p-4 md:p-6 bg-ayur-surface border-t border-ayur-border z-10">
+        <div className="shrink-0 p-3 md:p-6 bg-ayur-surface border-t border-ayur-border z-10">
           <div className="max-w-4xl mx-auto relative">
             <div className="relative group shadow-lg shadow-ayur-border-strong/20 rounded-[2rem] bg-ayur-surface border border-ayur-border-strong focus-within:border-ayur-accent/40 focus-within:ring-4 focus-within:ring-ayur-accent/10 transition-all">
               <textarea
@@ -775,17 +887,17 @@ export default function App() {
                   }
                 }}
                 placeholder="Ask AyurAi anything..."
-                className="w-full p-4 md:p-5 pr-14 md:pr-16 rounded-[2rem] focus:outline-none resize-none bg-transparent text-[15px] md:text-base text-ayur-text placeholder:text-ayur-text/40"
-                style={{ minHeight: '60px', maxHeight: '200px' }}
+                className="w-full p-3 md:p-5 pr-12 md:pr-16 rounded-[2rem] focus:outline-none resize-none bg-transparent text-sm md:text-base text-ayur-text placeholder:text-ayur-text/40"
+                style={{ minHeight: '50px', maxHeight: '150px' }}
               />
               {isLoading ? (
                 <button
                   id="stop-btn"
                   onClick={stopGeneration}
-                  className="absolute right-2 md:right-3 bottom-2 md:bottom-3 p-2.5 md:p-3 rounded-xl transition-all bg-red-500 text-white shadow-md hover:scale-105 active:scale-95"
+                  className="absolute right-2 md:right-3 bottom-1.5 md:bottom-3 p-2 md:p-3 rounded-xl transition-all bg-red-500 text-white shadow-md hover:scale-105 active:scale-95"
                   title="Stop generating"
                 >
-                  <Square size={18} className="md:w-5 md:h-5" fill="currentColor" />
+                  <Square size={16} className="md:w-5 md:h-5" fill="currentColor" />
                 </button>
               ) : (
                 <button
@@ -793,17 +905,17 @@ export default function App() {
                   onClick={handleSend}
                   disabled={!input.trim()}
                   className={cn(
-                    "absolute right-2 md:right-3 bottom-2 md:bottom-3 p-2.5 md:p-3 rounded-xl transition-all",
+                    "absolute right-2 md:right-3 bottom-1.5 md:bottom-3 p-2 md:p-3 rounded-xl transition-all",
                     input.trim() 
                       ? "bg-ayur-accent text-white shadow-md hover:scale-105 active:scale-95" 
                       : "bg-ayur-hover text-ayur-text/30"
                   )}
                 >
-                  <Send size={18} className="md:w-5 md:h-5" />
+                  <Send size={16} className="md:w-5 md:h-5" />
                 </button>
               )}
             </div>
-            <p className="text-[10px] md:text-[11px] text-center mt-3 md:mt-4 text-ayur-text/50 font-medium tracking-wide px-2">
+            <p className="text-[9px] md:text-[11px] text-center mt-2 md:mt-4 text-ayur-text/50 font-medium tracking-wide px-2">
               AyurAi can provide general Ayurvedic wisdom but is not a substitute for professional medical advice.
             </p>
           </div>
@@ -816,9 +928,14 @@ export default function App() {
         onClose={() => setShowPaymentModal(false)}
         userId={user?.uid || ''}
         userEmail={user?.email || ''}
-        onSuccess={() => {
-          setShowPaymentModal(false);
-          upgradeToPro();
+        onSuccess={async () => {
+          try {
+            await upgradeToPro();
+            setShowPaymentModal(false);
+            setFeedback({ message: 'Successfully upgraded to Pro!', type: 'success' });
+          } catch (error) {
+            setFeedback({ message: 'Failed to upgrade to Pro. Please try again.', type: 'error' });
+          }
         }}
       />
 
@@ -832,6 +949,37 @@ export default function App() {
         }}
         title={sessions.find(s => s.id === sessionToDelete)?.title}
       />
+
+      {showLoginModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md">
+            <Login />
+          </div>
+        </div>
+      )}
+
+      {(deferredPrompt || isIOS) && (
+        <motion.div
+          initial={{ opacity: 0, y: 50 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 50 }}
+          className="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-80 bg-ayur-surface border border-ayur-border-strong p-4 rounded-2xl shadow-2xl z-[1000] flex items-center gap-4"
+        >
+          <div className="w-12 h-12 rounded-xl bg-ayur-accent/10 flex items-center justify-center text-ayur-accent shrink-0">
+            <Leaf size={24} />
+          </div>
+          <div className="flex-1">
+            <h3 className="font-bold text-ayur-text">Install AyurAi</h3>
+            <p className="text-sm text-ayur-text/60">Install AyurAi for a better experience.</p>
+          </div>
+          <button 
+            onClick={handleInstall}
+            className="px-4 py-2 bg-ayur-accent text-white rounded-xl font-bold hover:bg-ayur-accent-dark transition-colors"
+          >
+            Install
+          </button>
+        </motion.div>
+      )}
     </div>
   );
 }

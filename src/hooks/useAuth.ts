@@ -191,7 +191,7 @@ export function useAuth() {
   };
 
   const upgradeToPro = async () => {
-    if (!user) return;
+    if (!user) throw new Error("User not authenticated");
 
     const endDate = new Date();
     endDate.setMonth(endDate.getMonth() + 1);
@@ -214,10 +214,13 @@ export function useAuth() {
           subscriptionEndDate: endDateStr,
           updatedAt: new Date().toISOString()
         }, { merge: true });
+        return { success: true };
       } catch (error) {
         console.error("Error upgrading to pro in Firestore:", error);
+        throw error;
       }
     }
+    return { success: true };
   };
 
   const resetDailyCoins = async () => {
