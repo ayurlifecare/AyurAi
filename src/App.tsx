@@ -227,6 +227,12 @@ export default function App() {
     localStorage.setItem('installPromptDismissed', 'true');
   };
 
+  const cancelInstallPrompt = () => {
+    setShowInstallPrompt(false);
+    // We don't set installPromptDismissed to true here so it can show up again later
+    // unless the user explicitly clicks "Not Now" or "Install"
+  };
+
   const [sessions, setSessions] = useState<ChatSession[]>([
     { id: '1', title: 'New Chat', messages: [], mode: 'education' }
   ]);
@@ -549,17 +555,17 @@ export default function App() {
   };
 
   const educationSuggestions = [
-    "What is the history of Ayurveda?",
-    "Explain the concept of Tridosha.",
-    "What are the five elements (Panchamahabhuta)?",
-    "How does Ayurveda view the mind?"
+    "Question",
+    "Discussion",
+    "Short Answer",
+    "Topic"
   ];
 
   const clinicalSuggestions = [
-    "I have a headache and poor digestion.",
-    "I'm feeling very anxious and having trouble sleeping.",
-    "I want to consult about my skin issues.",
-    "I have joint pain that gets worse in the cold."
+    "Case Taking",
+    "Prakruti Analysis",
+    "Case Discussions",
+    "Analysis Line of Treatment"
   ];
 
   // Removed forced login check
@@ -894,8 +900,15 @@ export default function App() {
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="shrink-0 bg-ayur-accent/10 border-b border-ayur-accent/20 px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 z-10"
+              className="shrink-0 bg-ayur-accent/10 border-b border-ayur-accent/20 px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 z-20 relative"
             >
+              <button 
+                onClick={cancelInstallPrompt}
+                className="absolute top-2 right-2 p-1 text-ayur-text/40 hover:text-ayur-text transition-colors"
+                aria-label="Close"
+              >
+                <X size={16} />
+              </button>
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-ayur-accent flex items-center justify-center shrink-0">
                   <Leaf className="text-white" size={20} />
@@ -905,7 +918,7 @@ export default function App() {
                   <p className="text-xs text-ayur-text/70">Add to your home screen for a faster, app-like experience.</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="flex items-center gap-2 w-full sm:w-auto pr-6 sm:pr-0">
                 <button
                   onClick={dismissInstallPrompt}
                   className="flex-1 sm:flex-none px-4 py-2 text-xs font-medium text-ayur-text/70 hover:text-ayur-text hover:bg-ayur-hover rounded-lg transition-colors"
@@ -938,42 +951,51 @@ export default function App() {
             {activeSession.messages.length === 0 ? (
               <motion.div 
                 key="empty-state"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
                 className="min-h-full flex flex-col items-center justify-center p-4 md:p-6 text-center max-w-2xl mx-auto"
               >
-                <div className="w-12 h-12 md:w-16 md:h-16 rounded-[1.5rem] md:rounded-[2rem] bg-ayur-accent/10 flex items-center justify-center text-ayur-accent mb-4 md:mb-6 shadow-inner rotate-3">
-                  <Sparkles size={24} className="-rotate-3 md:w-7 md:h-7" />
+                <div className="w-16 h-16 md:w-20 md:h-20 rounded-3xl bg-ayur-accent flex items-center justify-center text-white mb-6 md:mb-8 shadow-xl shadow-ayur-accent/20">
+                  <Leaf size={32} className="md:w-10 md:h-10" />
                 </div>
-                <h2 className="text-2xl md:text-3xl font-serif font-bold mb-3 md:mb-4 text-ayur-accent">
-                  {aiMode === 'education' ? 'Explore Ayurvedic Wisdom' : 'How can I assist your wellness today?'}
+                <h2 className="text-3xl md:text-4xl font-serif font-bold mb-4 md:mb-6 text-ayur-text">
+                  AyurAi
                 </h2>
-                <p className="text-sm md:text-[15px] text-ayur-text/70 mb-8 md:mb-10 max-w-md leading-relaxed px-4 font-medium">
-                  {aiMode === 'education' 
-                    ? 'Learn about the history, philosophy, and foundational concepts of Ayurveda.'
-                    : 'Start a conversation to begin your personalized Ayurvedic wellness consultation.'}
-                </p>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3 w-full max-w-xl px-2">
-                  {(aiMode === 'education' ? educationSuggestions : clinicalSuggestions).slice(0, 4).map((suggestion, i) => (
-                    <motion.button
-                      key={i}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.1 }}
-                      onClick={() => setInput(suggestion)}
-                      className="p-3 md:p-4 text-left rounded-2xl border border-ayur-border bg-ayur-surface hover:bg-ayur-sidebar hover:border-ayur-accent/30 hover:shadow-md transition-all text-xs md:text-sm group flex items-center justify-between"
-                    >
-                      <span className="text-ayur-text/80 font-medium line-clamp-2 pr-4">{suggestion}</span>
-                      <ChevronRight size={14} className="text-ayur-accent opacity-0 group-hover:opacity-100 transition-all transform group-hover:translate-x-1 shrink-0 md:w-4 md:h-4" />
-                    </motion.button>
-                  ))}
+                <div className="space-y-4 max-w-md mx-auto mb-10">
+                  <p className="text-base md:text-lg text-ayur-text/80 font-medium leading-relaxed">
+                    {aiMode === 'education' 
+                      ? 'Your personal guide to Ayurvedic wisdom and holistic living.'
+                      : 'Personalized Ayurvedic wellness consultations at your fingertips.'}
+                  </p>
+                  <p className="text-sm text-ayur-text/50 leading-relaxed">
+                    {aiMode === 'education' 
+                      ? 'Ask anything about Doshas, herbs, daily routines (Dinacharya), or Ayurvedic philosophy to begin your journey.'
+                      : 'Describe your concerns or health goals. Our AI Vaidya will help you understand your Prakriti and suggest natural balance.'}
+                  </p>
                 </div>
 
-                {/* Slider Ad in Empty State */}
+                <div className="w-full max-w-xl px-2">
+                  <h3 className="text-sm font-bold text-ayur-accent uppercase tracking-widest mb-4 text-center">What can I help with?</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    {(aiMode === 'education' ? educationSuggestions : clinicalSuggestions).map((suggestion, i) => (
+                      <motion.button
+                        key={i}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: i * 0.1 }}
+                        onClick={() => setInput(suggestion)}
+                        className="p-4 text-center rounded-2xl border border-ayur-border bg-ayur-surface hover:bg-ayur-sidebar hover:border-ayur-accent/30 hover:shadow-md transition-all text-sm font-bold text-ayur-text/80 group"
+                      >
+                        {suggestion}
+                      </motion.button>
+                    ))}
+                  </div>
+                </div>
+                
+                {/* Slider Ad in Empty State - Keep it subtle if not pro */}
                 {!isPro && (
-                  <div className="mt-12 w-full max-w-xl px-2">
+                  <div className="mt-16 w-full max-w-xl px-2 opacity-80 hover:opacity-100 transition-opacity">
                     <SliderAd ads={sliderAds} />
                   </div>
                 )}
@@ -998,7 +1020,7 @@ export default function App() {
                         {message.role === 'user' ? <User size={14} className="md:w-5 md:h-5" /> : <Leaf size={14} className="md:w-5 md:h-5" />}
                       </div>
                       <div className={cn(
-                        "flex-1 max-w-[90%] md:max-w-[80%] rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm",
+                        "flex-1 max-w-[90%] md:max-w-[80%] rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm transition-all duration-300 hover:scale-[1.01] hover:shadow-md",
                         message.role === 'user' 
                           ? "bg-ayur-surface border border-ayur-border-strong text-ayur-text rounded-tr-sm" 
                           : "bg-ayur-accent/5 border border-ayur-accent/10 rounded-tl-sm"
@@ -1140,29 +1162,6 @@ export default function App() {
             <Login />
           </div>
         </div>
-      )}
-
-      {(deferredPrompt || isIOS) && (
-        <motion.div
-          initial={{ opacity: 0, y: 50 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 50 }}
-          className="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-80 bg-ayur-surface border border-ayur-border-strong p-4 rounded-2xl shadow-2xl z-[1000] flex items-center gap-4"
-        >
-          <div className="w-12 h-12 rounded-xl bg-ayur-accent/10 flex items-center justify-center text-ayur-accent shrink-0">
-            <Leaf size={24} />
-          </div>
-          <div className="flex-1">
-            <h3 className="font-bold text-ayur-text">Install AyurAi</h3>
-            <p className="text-sm text-ayur-text/60">Install AyurAi for a better experience.</p>
-          </div>
-          <button 
-            onClick={handleInstall}
-            className="px-4 py-2 bg-ayur-accent text-white rounded-xl font-bold hover:bg-ayur-accent-dark transition-colors"
-          >
-            Install
-          </button>
-        </motion.div>
       )}
     </div>
   );
